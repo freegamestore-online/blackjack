@@ -1,0 +1,14 @@
+{
+  "name": "blackjack",
+  "private": true,
+  "packageManager": "pnpm@10.30.3",
+  "engines": { "node": ">=22" },
+  "pnpm": { "onlyBuiltDependencies": ["esbuild"] },
+  "scripts": {
+    "dev": "pnpm --filter @blackjack/web dev",
+    "build": "pnpm --filter @blackjack/web build",
+    "preview": "pnpm --filter @blackjack/web preview",
+    "typecheck": "pnpm --filter @blackjack/web exec tsc -b",
+    "test": "pnpm --filter @blackjack/web test"
+  }
+}
