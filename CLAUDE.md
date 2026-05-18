@@ -1,4 +1,4 @@
-# blackjack
+# Blackjack
 
 A free game on FreeGameStore.
 
