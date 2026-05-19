@@ -1,6 +1,14 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
-import { GameShell, GameTopbar, GameAuth, GameButton } from "@freegamestore/games";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { GameShell, GameTopbar, GameAuth, GameButton, useGameSounds } from "@freegamestore/games";
 import { useHighScore } from "./hooks/useHighScore";
+
+type SoundsApi = ReturnType<typeof useGameSounds>;
+
+function AudioBridge({ apiRef }: { apiRef: React.MutableRefObject<SoundsApi | null> }) {
+  const sounds = useGameSounds();
+  apiRef.current = sounds;
+  return null;
+}
 
 type Suit = "♠" | "♥" | "♦" | "♣";
 type Rank = "A" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "J" | "Q" | "K";
@@ -46,6 +54,7 @@ export default function App() {
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [hideHole, setHideHole] = useState(true);
   const [bestChips, updateBestChips] = useHighScore("blackjack-best");
+  const audioRef = useRef<SoundsApi | null>(null);
 
   const pTotal = useMemo(() => handValue(player).total, [player]);
   const dTotal = useMemo(() => handValue(dealer).total, [dealer]);
@@ -71,6 +80,7 @@ export default function App() {
     setHideHole(true);
     setOutcome(null);
     setChips((c) => c - bet);
+    audioRef.current?.playTick();
     const pv = handValue(p).total;
     const dv = handValue(h).total;
     if (pv === 21 || dv === 21) {
@@ -78,11 +88,14 @@ export default function App() {
       if (pv === 21 && dv === 21) {
         setOutcome("push");
         setChips((c) => c + bet);
+        audioRef.current?.playScore();
       } else if (pv === 21) {
         setOutcome("blackjack");
         setChips((c) => c + Math.floor(bet * 2.5));
+        audioRef.current?.playScore();
       } else {
         setOutcome("lose");
+        audioRef.current?.playGameOver();
       }
       setPhase("settled");
     } else {
@@ -96,12 +109,14 @@ export default function App() {
     const np = player.concat(drawn);
     setDeck(d);
     setPlayer(np);
+    audioRef.current?.playTick();
     const v = handValue(np).total;
     if (v >= 21) {
       setHideHole(false);
       if (v > 21) {
         setOutcome("bust");
         setPhase("settled");
+        audioRef.current?.playError();
       } else {
         setPhase("dealer");
       }
@@ -123,10 +138,12 @@ export default function App() {
     setDeck(d);
     setPlayer(np);
     setHideHole(false);
+    audioRef.current?.playTick();
     const v = handValue(np).total;
     if (v > 21) {
       setOutcome("bust");
       setPhase("settled");
+      audioRef.current?.playError();
     } else {
       setPhase("dealer");
     }
@@ -144,6 +161,7 @@ export default function App() {
         h = h.concat([d.pop()!]);
         setDealer(h);
         setDeck(d);
+        audioRef.current?.playTick();
         setTimeout(step, 450);
       } else {
         const pv = handValue(player).total;
@@ -154,6 +172,9 @@ export default function App() {
         else result = "lose";
         setOutcome(result);
         setPhase("settled");
+        if (result === "win") audioRef.current?.playScore();
+        else if (result === "push") audioRef.current?.playScore();
+        else audioRef.current?.playGameOver();
       }
     };
     const t = setTimeout(step, 500);
@@ -228,6 +249,7 @@ export default function App() {
         />
       }
     >
+      <AudioBridge apiRef={audioRef} />
       <div className="flex flex-col items-center h-full gap-3 p-3 overflow-hidden">
         {/* Dealer */}
         <div className="flex flex-col items-center gap-2">
