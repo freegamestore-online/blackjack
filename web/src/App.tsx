@@ -1,6 +1,9 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { GameShell, GameTopbar, GameAuth, GameButton, useGameSounds } from "@freegamestore/games";
 import { useHighScore } from "./hooks/useHighScore";
+import {
+  type Card, STARTING_CHIPS, MIN_BET, freshDeck, handValue, openingBet, loadChips, saveChips,
+} from "./game";
 
 type SoundsApi = ReturnType<typeof useGameSounds>;
 
@@ -8,37 +11,6 @@ function AudioBridge({ apiRef }: { apiRef: React.MutableRefObject<SoundsApi | nu
   const sounds = useGameSounds();
   apiRef.current = sounds;
   return null;
-}
-
-type Suit = "♠" | "♥" | "♦" | "♣";
-type Rank = "A" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "J" | "Q" | "K";
-interface Card { rank: Rank; suit: Suit; }
-
-const SUITS: Suit[] = ["♠", "♥", "♦", "♣"];
-const RANKS: Rank[] = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
-const STARTING_CHIPS = 1000;
-const DEFAULT_BET = 100;
-
-function freshDeck(): Card[] {
-  const deck: Card[] = [];
-  for (const s of SUITS) for (const r of RANKS) deck.push({ rank: r, suit: s });
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [deck[i], deck[j]] = [deck[j]!, deck[i]!];
-  }
-  return deck;
-}
-
-function handValue(hand: Card[]): { total: number; soft: boolean } {
-  let total = 0;
-  let aces = 0;
-  for (const c of hand) {
-    if (c.rank === "A") { total += 11; aces++; }
-    else if (c.rank === "K" || c.rank === "Q" || c.rank === "J") total += 10;
-    else total += parseInt(c.rank, 10);
-  }
-  while (total > 21 && aces > 0) { total -= 10; aces--; }
-  return { total, soft: aces > 0 };
 }
 
 type Phase = "betting" | "player" | "dealer" | "settled";
@@ -49,8 +21,8 @@ export default function App() {
   const [player, setPlayer] = useState<Card[]>([]);
   const [dealer, setDealer] = useState<Card[]>([]);
   const [phase, setPhase] = useState<Phase>("betting");
-  const [chips, setChips] = useState(STARTING_CHIPS);
-  const [bet, setBet] = useState(DEFAULT_BET);
+  const [chips, setChips] = useState(loadChips);
+  const [bet, setBet] = useState(() => openingBet(chips));
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [hideHole, setHideHole] = useState(true);
   const [bestChips, updateBestChips] = useHighScore("blackjack-best");
@@ -154,6 +126,7 @@ export default function App() {
     if (phase !== "dealer") return;
     let h = dealer.slice();
     let d = deck.slice();
+    let t: ReturnType<typeof setTimeout>;
     const step = () => {
       const v = handValue(h);
       if (v.total < 17) {
@@ -162,7 +135,7 @@ export default function App() {
         setDealer(h);
         setDeck(d);
         audioRef.current?.playTick();
-        setTimeout(step, 450);
+        t = setTimeout(step, 450);
       } else {
         const pv = handValue(player).total;
         const dv = v.total;
@@ -177,25 +150,28 @@ export default function App() {
         else audioRef.current?.playGameOver();
       }
     };
-    const t = setTimeout(step, 500);
+    t = setTimeout(step, 500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
-  // Track best chip count
-  useEffect(() => { updateBestChips(chips); }, [chips, updateBestChips]);
+  // Persist chips and track best chip count
+  useEffect(() => {
+    saveChips(chips);
+    updateBestChips(chips);
+  }, [chips, updateBestChips]);
 
   const newHand = useCallback(() => {
-    setBet(DEFAULT_BET);
+    setBet(openingBet(chips));
     setPhase("betting");
     setOutcome(null);
     setPlayer([]);
     setDealer([]);
-  }, []);
+  }, [chips]);
 
   const fullReset = useCallback(() => {
     setChips(STARTING_CHIPS);
-    setBet(DEFAULT_BET);
+    setBet(openingBet(STARTING_CHIPS));
     setDeck(freshDeck());
     setPlayer([]);
     setDealer([]);
@@ -206,7 +182,7 @@ export default function App() {
   const adjustBet = useCallback(
     (delta: number) => {
       if (phase !== "betting") return;
-      setBet((b) => Math.max(10, Math.min(chips, b + delta)));
+      setBet((b) => Math.max(MIN_BET, Math.min(chips, b + delta)));
     },
     [phase, chips],
   );
